@@ -1,6 +1,6 @@
-PROJECT(rf2o_laser_odometry)
 
-CMAKE_MINIMUM_REQUIRED(VERSION 3.3)
+cmake_minimum_required(VERSION 3.3)
+project(rf2o_laser_odometry)
 # Require C++17
 
 if(${CMAKE_VERSION} VERSION_LESS "3.8.0")
@@ -52,6 +52,10 @@ include_directories(
   ${Boost_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
 )
+
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
 
 ## Declare a cpp library
 add_library(${PROJECT_NAME} src/CLaserOdometry2D.cpp)

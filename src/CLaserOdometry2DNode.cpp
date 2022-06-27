@@ -28,8 +28,6 @@ public:
 
   CLaserOdometry2DNode();
   ~CLaserOdometry2DNode() = default;
-
-  void process(const ros::TimerEvent &);
   void publish();
 
   bool setLaserPoseFromTf();
@@ -74,10 +72,10 @@ CLaserOdometry2DNode::CLaserOdometry2DNode() :
   ros::NodeHandle pn("~");
   pn.param<std::string>("laser_scan_topic",laser_scan_topic,"/laser_scan");
   pn.param<std::string>("odom_topic", odom_topic, "/odom_rf2o");
-  pn.param<std::string>("base_frame_id", base_frame_id, "/base_link");
-  pn.param<std::string>("odom_frame_id", odom_frame_id, "/odom");
-  pn.param<bool>("publish_tf", publish_tf, true);
-  pn.param<std::string>("init_pose_from_topic", init_pose_from_topic, "/base_pose_ground_truth");
+  pn.param<std::string>("base_frame_id", base_frame_id, "base_link");
+  pn.param<std::string>("odom_frame_id", odom_frame_id, "local");
+  pn.param<bool>("publish_tf", publish_tf, false);
+  pn.param<std::string>("init_pose_from_topic", init_pose_from_topic, "");
   pn.param<double>("freq",freq,10.0);
   pn.param<bool>("verbose", verbose, true);
 
@@ -158,21 +156,6 @@ bool CLaserOdometry2DNode::scan_available()
   return new_scan_available;
 }
 
-void CLaserOdometry2DNode::process(const ros::TimerEvent&)
-{
-  if( is_initialized() && scan_available() )
-  {
-    //Process odometry estimation
-    odometryCalculation(last_scan);
-    publish();
-    new_scan_available = false; //avoids the possibility to run twice on the same laser scan
-  }
-  else
-  {
-    ROS_WARN("Waiting for laser_scans....") ;
-  }
-}
-
 //-----------------------------------------------------------------------------------
 //                                   CALLBACKS
 //-----------------------------------------------------------------------------------
@@ -191,7 +174,8 @@ void CLaserOdometry2DNode::LaserCallBack(const sensor_msgs::LaserScan::ConstPtr&
       //copy laser scan to internal variable
       for (unsigned int i = 0; i<width; i++)
         range_wf(i) = new_scan->ranges[i];
-      new_scan_available = true;
+      odometryCalculation(last_scan);
+      publish();
     }
     else
     {
@@ -220,7 +204,7 @@ void CLaserOdometry2DNode::publish()
   {
     ROS_DEBUG("[rf2o] Publishing TF: [base_link] to [odom]");
     geometry_msgs::TransformStamped odom_trans;
-    odom_trans.header.stamp = last_odom_time;
+    odom_trans.header.stamp = current_scan_time;
     odom_trans.header.frame_id = odom_frame_id;
     odom_trans.child_frame_id = base_frame_id;
     odom_trans.transform.translation.x = robot_pose_.translation()(0);
@@ -235,7 +219,7 @@ void CLaserOdometry2DNode::publish()
   //-------------------------------------------------
   ROS_DEBUG ("[rf2o] Publishing Odom Topic");
   nav_msgs::Odometry odom;
-  odom.header.stamp = last_odom_time;
+  odom.header.stamp = current_scan_time;
   odom.header.frame_id = odom_frame_id;
   //set the position
   odom.pose.pose.position.x = robot_pose_.translation()(0);
@@ -261,17 +245,6 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "RF2O_LaserOdom");
 
   rf2o::CLaserOdometry2DNode myLaserOdomNode;
-
-  ros::TimerOptions timer_opt;
-  timer_opt.oneshot   = false;
-  timer_opt.autostart = true;
-  timer_opt.callback_queue = ros::getGlobalCallbackQueue();
-  timer_opt.tracked_object = ros::VoidConstPtr();
-
-  timer_opt.callback = boost::bind(&rf2o::CLaserOdometry2DNode::process, &myLaserOdomNode, _1);
-  timer_opt.period   = ros::Rate(myLaserOdomNode.freq).expectedCycleTime();
-
-  ros::Timer rf2o_timer = ros::NodeHandle("~").createTimer(timer_opt);
 
   ros::spin();
 
